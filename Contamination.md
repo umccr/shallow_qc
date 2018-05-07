@@ -136,6 +136,7 @@ NA24631_S9_SS025_R2_001.fastq.gz          unmatched  PTC_NA24385_S1_SS025_R2_001
 
 For all comparisons, evidence is pretty strong.
 
+
 ### With contaminated samples
 
 Now we want to see if we are able to detect contaminations. Out AF threshold for somatic calling is 10x, so we should be handling contamination below 10% in variant calling. So here we should try to detect contamination of 10% or above. As a test data, we emulate contaminated samples by concatenating fastq in proportion 9 to 1.
@@ -145,28 +146,35 @@ Now we want to see if we are able to detect contaminations. Out AF threshold for
 We assume that the reads in fastq are placed randomly (which should be safe for us), so can use `head` for subsampling:
 
 ```
-time gunzip -c NA24631_S9_R1_001.fastq.gz      | head -n 66699966 | gzip -c > NA24631_S9_R1_001.head_3x.fastq.gz                # 2m35s
-time gunzip -c PTC_NA24385_S11_R1_001.fastq.gz | head -n 7411107  | gzip -c > PTC_NA24385_S11_R1_001.head_034x.fastq.gz
+time gunzip -c NA24631_S9_R1_001.fastq.gz      | head -n $(py '66699966 * 4') | gzip -c > NA24631_S9_R1_001.head_3x.fastq.gz
+time gunzip -c PTC_NA24385_S11_R1_001.fastq.gz | head -n $(py '7411107 * 4')  | gzip -c > PTC_NA24385_S11_R1_001.head_034x.fastq.gz
+
+# gunzip -c NA24631_S9_R2_001.fastq.gz          184.31s user 11.49s system  7% cpu 44:35.48 total
+# head -n $(py '66699966 * 4')                   25.76s user 27.94s system  2% cpu 44:26.05 total
+# gzip -c >> NA24631_S9.head_6x.fastq.gz       2580.25s user  8.86s system 97% cpu 44:26.06 total
 ```
 
 The coverage might be quite low, so we will also test 6x+0.7x (129393200 + 15095873) by using the R2 reads as well:
 
 ```
 # 6x + 0.7x:
-time gunzip -c NA24631_S9_R1_001.fastq.gz      | head -n 66699966 | gzip -c >  NA24631_S9.head_6x.fastq.gz
-time gunzip -c NA24631_S9_R2_001.fastq.gz      | head -n 66699966 | gzip -c >> NA24631_S9.head_6x.fastq.gz
-time gunzip -c PTC_NA24385_S11_R1_001.fastq.gz | head -n 7411107  | gzip -c >  PTC_NA24385_S11.head_07x.fastq.gz
-time gunzip -c PTC_NA24385_S11_R2_001.fastq.gz | head -n 7411107  | gzip -c >> PTC_NA24385_S11.head_07x.fastq.gz
+cp             NA24631_S9_R1_001.head_3x.fastq.gz                                          NA24631_S9.head_6x.fastq.gz
+time gunzip -c NA24631_S9_R2_001.fastq.gz      | head -n $(py '66699966 * 4') | gzip -c >> NA24631_S9.head_6x.fastq.gz
+cp             PTC_NA24385_S11_R1_001.head_034x.fastq.gz                                   PTC_NA24385_S11.head_07x.fastq.gz
+time gunzip -c PTC_NA24385_S11_R2_001.fastq.gz | head -n $(py '7411107 * 4')  | gzip -c >> PTC_NA24385_S11.head_07x.fastq.gz
+
+# gunzip -c PTC_NA24385_S11_R2_001.fastq.gz      21.28s user  1.31s system  6% cpu  5:29.70 total
+# head -n $(py '7411107 * 4')                     2.81s user  3.03s system  1% cpu  5:20.03 total
+# gzip -c >> PTC_NA24385_S11.head_07x.fastq.gz  311.62s user  1.11s system 97% cpu  5:20.04 total
 ```
 
 For the sake of experiment, aslo trying to subsample correctly just in case:
 
 ```
 time seqtk sample -s 11 PTC_NA24385_S11_R1_001.fastq.gz 0.9 | gzip -c > PTC_NA24385_S11_R1_001.seqtk_90pct.fastq.gz
-# seqtk sample -s 11 PTC_NA24385_S11_R1_001.fastq.gz 0.9  	343.89s user 20.75s system 10% cpu 1:00:30.13 total
-# gzip -c > PTC_NA24385_S11_R1_001.seqtk_90pct.fastq.gz  	3100.37s user 13.22s system 85% cpu 1:00:30.15 total
-# Timing for seqtk only: 
-# seqtk sample -s 11 PTC_NA24385_S11_R1_001.fastq.gz 0.9    330.30s user 17.57s system 61% cpu 9:24.57 total
+# seqtk:    343.89s user 20.75s system 10% cpu 1:00:30.13 total
+# gzip:     3100.37s user 13.22s system 85% cpu 1:00:30.15 total
+# Timing for seqtk only:    330.30s user 17.57s system 61% cpu 9:24.57 total
 ```
 
 It seem to be taking quite a lot of CPU time, though, and shouldn't affect the results.
@@ -182,41 +190,383 @@ Running NGSCheckMate:
 
 ```
 time /data/cephfs/punim0010/projects/Saveliev_Fingerprinting/NGSCheckMate/ngscheckmate_fastq -p 9 -1 fastqs/NA24631_S9__3x__PTC_NA24385_S11__034x.fastq.gz NGSCheckMate/SNP/SNP.pt > ncm_files/NA24631_S9__3x__PTC_NA24385_S11__034x.ncm
-# 920.55s user 10.03s system 97% cpu 15:49.92 total
-
+# Number of reads in the file : 74 111 073
+# 3690.93s user 7.44s system 640% cpu 9:37.36 total
+ 
 time /data/cephfs/punim0010/projects/Saveliev_Fingerprinting/NGSCheckMate/ngscheckmate_fastq -p 9 -1 fastqs/NA24631_S9__6x__PTC_NA24385_S11__07x.fastq.gz NGSCheckMate/SNP/SNP.pt > ncm_files/NA24631_S9__6x__PTC_NA24385_S11__07x.ncm
-Number of reads in the file : 37055537
-1514.89s user 25.62s system 97% cpu 26:23.89 total
+# Number of reads in the file : 150 074 923
+# 7287.73s user 17.90s system 650% cpu 18:42.33 total
 
 python2 NGSCheckMate/vaf_ncm.py -f -I ncm_files -O output_contaminated
 
-# vs clean B
-NA24631-PosCntl_R1.fastq.gz            matched    NA24631_S9_R2_001.fastq.gz             0.8014  1.42   # A - 3.8x  vs.  B - 3.6x
-NA24631-PosCntl_D1_R2_001.fastq.gz     matched    NA24631_S9_R2_001.fastq.gz             0.7441  0.43   # A - 1x    vs.  B - 3.6x 
-PTC_NA24385_S1_R2_001.fastq.gz         unmatched  NA24631_S9_R2_001.fastq.gz             0.1174  0.67   # C - 1.6x  vs.  B - 3.6x
-PTC_NA24385_S1_SS025_R2_001.fastq.gz   unmatched  NA24631_S9_R2_001.fastq.gz             0.103   0.2    # C - 1x    vs.  B - 3.6x
+# vs. clean B
+NA24631-PosCntl_R1.fastq.gz            matched    NA24631_S9_R2_001.fastq.gz             0.8014    # A - 3.8x  vs.  B - 3.6x
+NA24631-PosCntl_D1_R2_001.fastq.gz     matched    NA24631_S9_R2_001.fastq.gz             0.7441    # A - 1x    vs.  B - 3.6x 
+PTC_NA24385_S1_R2_001.fastq.gz         unmatched  NA24631_S9_R2_001.fastq.gz             0.1174    # C - 1.6x  vs.  B - 3.6x
+PTC_NA24385_S1_SS025_R2_001.fastq.gz   unmatched  NA24631_S9_R2_001.fastq.gz             0.103     # C - 1x    vs.  B - 3.6x
 
-# vs 3x+0.34x contaminated
-NA24631-PosCntl_R1.fastq.gz            matched    NA24631_S9__3x__PTC_NA24385_S11__034x  0.7272  0.37   # A - 3.8x  vs.  B - 3x + C - 0.34x
-NA24631-PosCntl_D1_R2_001.fastq.gz     matched    NA24631_S9__3x__PTC_NA24385_S11__034x  0.6691  0.37   # A - 1x    vs.  B - 3x + C - 0.34x
-NA24631_S9_R2_001.fastq.gz             matched    NA24631_S9__3x__PTC_NA24385_S11__034x  0.8778  0.37   # B - 3.6x  vs.  B - 3x + C - 0.34x
-NA24631_S9_SS025_R2_001.fastq.gz       matched    NA24631_S9__3x__PTC_NA24385_S11__034x  0.7794  0.37   # B - 1x    vs.  B - 3x + C - 0.34x
-PTC_NA24385_S1_R2_001.fastq.gz         unmatched  NA24631_S9__3x__PTC_NA24385_S11__034x  0.0974  0.37   # C - 1.6x  vs.  B - 3x + C - 0.34x  
-PTC_NA24385_S1_SS025_R2_001.fastq.gz   unmatched  NA24631_S9__3x__PTC_NA24385_S11__034x  0.0961  0.2    # C - 1x    vs.  B - 3x + C - 0.34x
+# vs. 3x+0.34x contaminated
+NA24631-PosCntl_D1_R2_001.fastq.gz     matched    NA24631_S9__3x__PTC_NA24385_S11__034x  0.7113    # A - 3.8x  vs.  B - 3x + C - 0.34x
+NA24631-PosCntl_R1.fastq.gz            matched    NA24631_S9__3x__PTC_NA24385_S11__034x  0.7668    # A - 1x    vs.  B - 3x + C - 0.34x
+NA24631_S9_R2_001.fastq.gz             matched    NA24631_S9__3x__PTC_NA24385_S11__034x  0.9546    # B - 3.6x  vs.  B - 3x + C - 0.34x
+NA24631_S9_SS025_R2_001.fastq.gz       matched    NA24631_S9__3x__PTC_NA24385_S11__034x  0.8621    # B - 1x    vs.  B - 3x + C - 0.34x
+PTC_NA24385_S1_R2_001.fastq.gz         unmatched  NA24631_S9__3x__PTC_NA24385_S11__034x  0.1837    # C - 1.6x  vs.  B - 3x + C - 0.34x  
+PTC_NA24385_S1_SS025_R2_001.fastq.gz   unmatched  NA24631_S9__3x__PTC_NA24385_S11__034x  0.1719    # C - 1x    vs.  B - 3x + C - 0.34x
 
-# vs 6x+0.7x contaminated
-NA24631-PosCntl_R1.fastq.gz            matched    NA24631_S9__6x__PTC_NA24385_S11__07x   0.6793  0.4    # A - 3.8x  vs.  B - 6x + C - 0.7x
-NA24631-PosCntl_D1_R2_001.fastq.gz     matched    NA24631_S9__6x__PTC_NA24385_S11__07x   0.6224  0.4    # A - 1x    vs.  B - 6x + C - 0.7x
-NA24631_S9_R2_001.fastq.gz             matched    NA24631_S9__6x__PTC_NA24385_S11__07x   0.816   0.4    # B - 3.6x  vs.  B - 6x + C - 0.7x
-NA24631_S9_SS025_R2_001.fastq.gz       matched    NA24631_S9__6x__PTC_NA24385_S11__07x   0.7357  0.4    # B - 1x    vs.  B - 6x + C - 0.7x
-PTC_NA24385_S1_R2_001.fastq.gz         unmatched  NA24631_S9__6x__PTC_NA24385_S11__07x   0.1488  0.4    # C - 1.6x  vs.  B - 6x + C - 0.7x
-PTC_NA24385_S1_SS025_R2_001.fastq.gz   unmatched  NA24631_S9__6x__PTC_NA24385_S11__07x   0.1403  0.2    # C - 1x    vs.  B - 6x + C - 0.7x
+# vs. 6x+0.7x contaminated
+NA24631-PosCntl_D1_R2_001.fastq.gz     matched    NA24631_S9__6x__PTC_NA24385_S11__07x   0.6224    # A - 3.8x  vs.  B - 6x + C - 0.7x
+NA24631-PosCntl_R1.fastq.gz            matched    NA24631_S9__6x__PTC_NA24385_S11__07x   0.6793    # A - 1x    vs.  B - 6x + C - 0.7x
+NA24631_S9_R2_001.fastq.gz             matched    NA24631_S9__6x__PTC_NA24385_S11__07x   0.816     # B - 3.6x  vs.  B - 6x + C - 0.7x
+NA24631_S9_SS025_R2_001.fastq.gz       matched    NA24631_S9__6x__PTC_NA24385_S11__07x   0.7357    # B - 1x    vs.  B - 6x + C - 0.7x
+PTC_NA24385_S1_R2_001.fastq.gz         unmatched  NA24631_S9__6x__PTC_NA24385_S11__07x   0.1488    # C - 1.6x  vs.  B - 6x + C - 0.7x
+PTC_NA24385_S1_SS025_R2_001.fastq.gz   unmatched  NA24631_S9__6x__PTC_NA24385_S11__07x   0.1403    # C - 1x    vs.  B - 6x + C - 0.7x
 
 # contaminated vs contaminated
-NA24631_S9__3x__PTC_NA24385_S11__034x  matched    NA24631_S9__6x__PTC_NA24385_S11__07x   0.9836  0.37   # B - 3x + C - 0.34x  vs B - 6x + C - 0.7x
+NA24631_S9__3x__PTC_NA24385_S11__034x  matched    NA24631_S9__6x__PTC_NA24385_S11__07x   0.9359    # B - 3x + C - 0.34x  vs B - 6x + C - 0.7x
 ```
 
 We see that 6x+0.7x yields a higher similarity with PTC_NA24385 (~0.14) than when comparing against a pure NA24631 (~0.11), and at the same time it yields a lower similarity with NA24631 (~0.6) than when comparing against a pure NA24631 (~0.8) - which looks promising, however doesn't give us exact thresholds to confidently tell one from the other. We will dig into the VAF files to see if we can extract the contamination rate from them - e.g., calculate a median differece between AFs for all matching calls.
+
+
+### Exploring VAF files
+
+We calculate the difference between AFs. We exclude lines with `NA`.
+
+```
+# Identical samples:
+paste NA24631_S9_R2_001.fastq.gz.ncm NA24631-PosCntl_S6_R2_001.fastq.gz.ncm    | grep -v NA | awk 'BEGIN {OFS="\t"} function abs(v) {return v < 0 ? -v : v} { sum += abs($4 - $8) } END { print sum / NR }'
+# 0.13942
+
+# Different samples:
+paste NA24631_S9_R2_001.fastq.gz.ncm PTC_NA24385_S11_R1_001.fastq.gz.ncm       | grep -v NA | awk 'BEGIN {OFS="\t"} function abs(v) {return v < 0 ? -v : v} { sum += abs($4 - $8) } END { print sum / NR }'
+# 0.444964
+
+# Contaminated - 3.5x:
+paste NA24631_S9_R2_001.fastq.gz.ncm NA24631_S9__3x__PTC_NA24385_S11__034x.ncm | grep -v NA | awk 'BEGIN {OFS="\t"} function abs(v) {return v < 0 ? -v : v} { sum += abs($4 - $8) } END { print sum / NR }'
+# 0.0552495
+
+# Contaminated - 7x:
+paste NA24631_S9_R2_001.fastq.gz.ncm NA24631_S9__6x__PTC_NA24385_S11__07x.ncm  | grep -v NA | awk 'BEGIN {OFS="\t"} function abs(v) {return v < 0 ? -v : v} { sum += abs($4 - $8) } END { print sum / NR }'
+# 0.0899408
+```
+
+Obviously, it's not sensitive enough to detect contamintaion. However, in reality we will be comparing the shallow QC datasets against full clean pre-exusting data.
+
+
+### Generate VAF from full BAMs
+
+We will generate a VAF file from a full BAM and explore how our shallow VAF files compare to it.
+
+NGSCheckMate can run from VCFs, so trying to generate a VAF from VCF:
+
+```
+bcftools view /data/cephfs/punim0010/projects/Hsu_WGS_Validation/WGS-GiaB-merged/final/2017-11-13_giab-merged/HanChinese-1-ensemble-annotated.vcf.gz -R NGSCheckMate/SNP/SNP_GRCh37_hg19_woChr.bed > NA24631_full.vcf
+bgzip NA24631_full.vcf
+tabix -p vcf NA24631_full.vcf.gz
+
+# convert VCF to NA24631_full.ncm VCF file. For each record in SNP.bed, tabix one from VCF. Or just vardict using BED file?
+# bcftools query -f "X\t%REF\t%ALT\t%AF\n" NA24631_full.vcf | tsv
+index   ref     alt     vaf
+0       0       0       NA
+1       NA      NA      NA
+2       0       2       1.000000
+
+samtools mpileup -auf /data/cephfs/punim0010/local/stable/bcbio/genomes/Hsapiens/GRCh37/seq/GRCh37.fa -l NGSCheckMate/SNP/SNP_GRCh37_hg19_woChr.bed /data/cephfs/punim0010/projects/Hsu_WGS_Validation/WGS-GiaB-merged/final/NA24631-1KC/NA24631-1KC-ready.bam -t DP,AD | bcftools view -H > NA24631_mpileup_a.vcf
+```
+
+Internally, for VCF input ncm.py runs same samtools mpileup - so we can do it manually as well.
+
+```
+python2 NGSCheckMate/ncm.py -B -l vcfs.list -O ncm_from_vcfs -N ncm_from_vcfs -bed NGSCheckMate/SNP/SNP_GRCh37_hg19_woChr.bed
+# it runs internally the following:
+# samtools mpileup -uf /data/cephfs/punim0010/extras/vlad/bcbio/genomes/Hsapiens/GRCh37/seq/GRCh37.fa -l NGSCheckMate/SNP/SNP_GRCh37_hg19_woChr.bed /data/cephfs/punim0010/projects/Hsu_WGS_Validation/WGS-GiaB-merged/final/2017-11-13_giab-merged/AshkenazimJew-2-ensemble-annotated.vcf.gz | bcftools call -c > ncm_from_vcfs/AshkenazimJew-2-ensemble-annotated.vcf
+```
+
+However, the SNPs BED file looks fishy - some SNPs are 45 bases long https://github.com/parklab/NGSCheckMate/issues/15
+
+```
+cat NGSCheckMate/SNP/SNP_GRCh37_hg19_wChr.bed | awk 'BEGIN {OFS="\t"} {print $1, $2, $3, $4, $5, $3-$2 }' | sort -k6,6 | less
+```
+
+All those rsIDs are deleted from the NCBI database, as well as many others in the list:
+
+```
+vcfanno dbsnp.toml ncm_from_bams/NA24631-1KC-ready.vcf > ncm_from_bams/NA24631-1KC-ready.anno.vcf
+grep rs ncm_from_bams/NA24631-1KC-ready.anno.vcf | wc
+  10934  109323 2258957
+grep -v rs ncm_from_bams/NA24631-1KC-ready.anno.vcf | wc
+  10459  103828 1451221
+```
+
+So we would need to rebuild the SNP list.
+
+
+### Rebuilding SNPs from scratch
+
+We will re-build the SNPs from scratch. We will prepare a list of SNPs with MAF close to 50%, and run NGSCheckMate's [patterngenerator](https://github.com/parklab/NGSCheckMate#1-patterngenerator). "It requires a bed file containing a set of SNP positions, a genome reference file (both FASTA and bowtie 1 index) and the bowtie alignment program (http://bowtie-bio.sourceforge.net/index.shtml)." In order to make a BED file, "We required uniqueness of the k-mer sequence flanking the SNPs and used 11 696 SNPs (more details below). Our simulation showed that there was no difference in the distribution of VAF correlations between using the 21 067 and the reduced 11 696 SNP sets."
+
+We will overlap with a list of single-allelic dbSNP SNPs in confident regions with GMAF>10%, and re-build the pt file from that:
+
+```
+cd new_SNPs
+wget https://github.com/AstraZeneca-NGS/ClearUp/blob/master/clearup/snps/dbsnp_maf10pct.hg19.no_selfchain_gc25-30_65-70_lowcomp50.autosomal.bed.gz\?raw\=true -O dbsnp_maf10pct.hg19.no_selfchain_gc25-30_65-70_lowcomp50.autosomal.bed.gz
+
+bedtools sort -i ../NGSCheckMate/SNP/SNP_GRCh37_hg19_wChr.bed > SNP_hg19.sorted.bed
+
+bedtools intersect -a SNP_hg19.sorted.bed.gz -b dbsnp_maf10pct.hg19.no_selfchain_gc25-30_65-70_lowcomp50.autosomal.bed.gz > SNP_hg19.sorted.maf10.bed
+
+cat SNP_hg19.sorted.maf10.bed | py -x "x[3:]" > SNP_GRCh37.sorted.maf10.bed
+
+perl ../NGSCheckMate/patterngenerator/makesnvpattern.pl SNP_GRCh37.sorted.maf10.bed /data/cephfs/punim0010/extras/vlad/bcbio/genomes/Hsapiens/GRCh37/seq/GRCh37.fa /data/cephfs/punim0010/extras/vlad/bcbio/genomes/Hsapiens/GRCh37/bowtie/GRCh37.fa . new_SNPs
+```
+
+
+### Aligning shallow BAMs
+
+We also want to see how sensitive the FASTQ method is compared to calling variants from aligned BAMs. We running bcbio for positive controls:
+
+```
+# Preparing left reads in addition to NA24631_S9__3x__PTC_NA24385_S11__034x.fastq.gz:
+ln -s NA24631_S9__3x__PTC_NA24385_S11__034x.fastq.gz NA24631_S9__3x__PTC_NA24385_S11__034x_1.fastq.gz
+time gunzip -c NA24631_S9_R2_001.fastq.gz      | head -n $(py '66699966 * 4') | gzip -c > NA24631_S9_R2_001.head_3x.fastq.gz
+time gunzip -c PTC_NA24385_S11_R2_001.fastq.gz | head -n $(py '7411107 * 4')  | gzip -c > PTC_NA24385_S11_R2_001.head_034x.fastq.gz
+cat NA24631_S9_R2_001.head_3x.fastq.gz PTC_NA24385_S11_R2_001.head_034x.fastq.gz > NA24631_S9__3x__PTC_NA24385_S11__034x_2.fastq.gz
+
+cd /data/cephfs/punim0010/projects/Saveliev_Fingerprinting/bcbio
+
+bcbio_nextgen.py -w template std_workflow_positiveControl.yaml bcbio.csv /data/cephfs/punim0010/projects/Saveliev_Fingerprinting/fastqs/NA24631_S9__3x__PTC_NA24385_S11__034x_* /data/cephfs/punim0010/projects/Saveliev_Fingerprinting/fastqs/NA24631_S9_R?_001.fastq.gz
+```
+
+Compare with FASTQ methods:
+
+```
+paste NA24631_S9.ncm ../ncm_files/NA24631_S9_R2_001.fastq.gz.ncm | grep -v NA | awk 'BEGIN {OFS="\t"; print "", "", "", "BAM", "", "", "", "FASTQ", "BAM - FASTQ"} function abs(v) {return v < 0 ? -v : v} { print $1, $2, $3, $4, $5, $6, $7, $8, abs($4 - $8) }' | tsv
+```
+
+### Working with new SNP list
+
+#### Find VAFs from contaminated and clean FASTQ
+
+```
+NCM=/data/cephfs/punim0010/projects/Saveliev_Fingerprinting/NGSCheckMate/ngscheckmate_fastq
+PT=new_SNPs/new_SNPs.pt
+time $NCM -p 10 -1 fastqs/NA24631_S9__3x__PTC_NA24385_S11__034x.fastq.gz $PT > ncm_files/NA24631_S9__3x__PTC_NA24385_S11__034x.ncm &
+time $NCM -p 10 -1 fastqs/NA24631_S9__6x__PTC_NA24385_S11__07x.fastq.gz  $PT > ncm_files/NA24631_S9__6x__PTC_NA24385_S11__07x.ncm &
+time $NCM -p 10 -1 fastqs/NA24631-PosCntl_S6_R1_001.fastq.gz             $PT > ncm_files/NA24631-PosCntl_S6_R2_001.fastq.gz.ncm &
+time $NCM -p 10 -1 fastqs/NA24631_S9_R1_001.fastq.gz                     $PT > ncm_files/NA24631_S9_R2_001.fastq.gz.ncm &
+time $NCM -p 10 -1 fastqs/PTC_NA24385_S11_R1_001.fastq.gz                $PT > ncm_files/PTC_NA24385_S11_R1_001.fastq.gz.ncm &
+
+python2 NGSCheckMate/vaf_ncm.py -f -I ncm_files -O output_contaminated
+
+```
+
+#### Extract VAFs from shallow BAMs
+
+```
+cd /data/cephfs/punim0010/projects/Saveliev_Fingerprinting/bcbio/bcbio/final/NA24631_S9__3x__PTC_NA24385_S11__034x
+mkdir mpileup_work
+REF=/data/cephfs/punim0010/local/stable/bcbio/genomes/Hsapiens/GRCh37/seq/GRCh37.fa
+SNPS=/data/cephfs/punim0010/projects/Saveliev_Fingerprinting/new_SNPs/SNP_GRCh37.sorted.maf10.bed
+cat $SNPS | awk '{print $1":"($2+1)"-"$3}' | gargs -p 31 "samtools mpileup -uf $REF -r {} NA24631_S9__3x__PTC_NA24385_S11__034x-ready.bam -a -t DP,AD | bcftools view -H -o mpileup_work/NA24631_S9__3x__PTC_NA24385_S11__034x-ready.bam.mpileup_{}"
+
+ls -1 mpileup_work/NA24631_S9__3x__PTC_NA24385_S11__034x-ready.bam.mpileup_* | parallel -k "if [ -s {} ] ; then cat {} ; else echo "NA {}" ; fi" > NA24631_S9__3x__PTC_NA24385_S11__034x-mpileup_all
+
+sort --general-numeric-sort -k1,1 -k2,2 NA24631_S9__3x__PTC_NA24385_S11__034x-mpileup_all | uniq > NA24631_S9__3x__PTC_NA24385_S11__034x-mpileup_all_sorted
+
+# In result, getting lines as follows - NA for uncalled and proper VCF records for called:
+# 1       168013850       .       T       <*>     0       .       DP=2;I16=2,0,0,0,74,2738,0,0,120,7200,0,0,35,725,0,0;QS=1,0;MQ0F=0      PL:DP:ADF:AD    0,6,67:2:2,0:2,0
+# NA NA24631_S9__3x__PTC_NA24385_S11__034x-sort.mpileup_10:100018844-100018844
+```
+
+Now for all records, generate ncm file like
+
+```
+index   ref     alt     vaf
+0       0       0       NA
+1       NA      NA      NA
+2       0       2       1.000000
+```
+
+Add index, and if it's NA - add NA, otherwise add `AD[1] / sum(AD)`
+
+```
+python make_vaf.py NA24631_S9__3x__PTC_NA24385_S11__034x-mpileup_all_sorted > NA24631_S9__3x__PTC_NA24385_S11__034x.ncm
+```
+
+Same for non-contaminated file:
+
+```
+cd /data/cephfs/punim0010/projects/Saveliev_Fingerprinting/bcbio/bcbio/final/NA24631_S9
+mkdir mpileup_work
+cat $SNPS | awk '{print $1":"($2+1)"-"$3}' | gargs -p 31 "samtools mpileup -uf $REF -r {} NA24631_S9-ready.bam -a -t DP,AD | bcftools view -H -o mpileup_work/NA24631_S9-ready.bam.mpileup_{}"
+ls -1 mpileup_work/NA24631_S9-ready.bam.mpileup_* | parallel -k "if [ -s {} ] ; then cat {} ; else echo "NA {}" ; fi" > NA24631_S9-mpileup_all
+sort --general-numeric-sort -k1,1 -k2,2 NA24631_S9-mpileup_all | uniq > NA24631_S9-mpileup_all_sorted
+python make_vaf.py NA24631_S9-mpileup_all_sorted > NA24631_S9.ncm
+```
+
+And the contamination sample:
+
+```
+cd /data/cephfs/punim0010/projects/Saveliev_Fingerprinting/bcbio/bcbio/final/PTC_NA24385_S11
+mkdir mpileup_work
+cat $SNPS | awk '{print $1":"($2+1)"-"$3}' | gargs -p 31 "samtools mpileup -uf $REF -r {} PTC_NA24385_S11-ready.bam -a -t DP,AD | bcftools view -H -o mpileup_work/PTC_NA24385_S11-ready.bam.mpileup_{}"
+ls -1 mpileup_work/PTC_NA24385_S11-ready.bam.mpileup_* | parallel -k "if [ -s {} ] ; then cat {} ; else echo "NA {}" ; fi" > PTC_NA24385_S11-mpileup_all
+sort --general-numeric-sort -k1,1 -k2,2 PTC_NA24385_S11-mpileup_all | uniq > PTC_NA24385_S11-mpileup_all_sorted
+python make_vaf.py PTC_NA24385_S11-mpileup_all_sorted > PTC_NA24385_S11.ncm
+```
+
+
+#### Extract VAFs from full BAMs
+
+```
+cd /data/cephfs/punim0010/projects/Saveliev_Fingerprinting/ncm_from_bams/mpileups
+cat #SNPS | awk '{print $1":"($2+1)"-"$3}' | gargs -p 31 "samtools mpileup -uf $REF -r {} /data/cephfs/punim0010/projects/Hsu_WGS_Validation/WGS-GiaB-merged/final/NA24631-1KC/NA24631-1KC-ready.bam -a -t DP,AD | bcftools view -H -o NA24631-1KC-ready.mpileup/NA24631-1KC.mpileup_{}"
+ls -1 NA24631-1KC-ready.mpileup/NA24631-1KC.mpileup_* | parallel -k "if [ -s {} ] ; then cat {} ; else echo "NA {}" ; fi" > NA24631-1KC-ready.mpileup/NA24631-1KC.mpileup_all
+sort --general-numeric-sort -k1,1 -k2,2 NA24631-1KC-ready.mpileup/NA24631-1KC.mpileup_all | uniq > NA24631-1KC.mpileup_all_sorted
+cd ..
+python make_vaf.py mpileups/NA24631-1KC.mpileup_all_sorted > NA24631-1KC.ncm
+```
+
+#### Compare differences based on those VAFs
+
+```
+# Full - shallow-clean:
+paste NA24631-1KC.ncm NA24631_S9.ncm                            | grep -v NA | awk 'BEGIN {OFS="\t"} function abs(v) {return v < 0 ? -v : v} { sum += abs($4 - $8) } END { print sum / NR }'
+# 0.0751213
+
+# Full - shallow-contaminated:
+paste NA24631-1KC.ncm NA24631_S9__3x__PTC_NA24385_S11__034x.ncm | grep -v NA | awk 'BEGIN {OFS="\t"} function abs(v) {return v < 0 ? -v : v} { sum += abs($4 - $8) } END { print sum / NR }'
+# 0.102715
+
+# Full - shallow-contamination-alone:
+paste NA24631-1KC.ncm PTC_NA24385_S11.ncm                       | grep -v NA | awk 'BEGIN {OFS="\t"} function abs(v) {return v < 0 ? -v : v} { sum += abs($4 - $8) } END { print sum / NR }'
+# 0.415981
+```
+
+To explore in detail, use:
+
+```
+paste NA24631-1KC.mpileup_all.ncm NA24631_S9.ncm NA24631_S9__3x__PTC_NA24385_S11__034x.ncm PTC_NA24385_S11.ncm | grep -v NA | grep -v vaf | awk 'BEGIN {OFS="\t"; print "A", "Shal A", "Shal A w/B", "Shal B", "A - Shal A", "A - Shal A w/B", "A - Shal B"} function abs(v) {return v < 0 ? -v : v} { print $4, $8, $12, $16, abs($4 - $8), abs($4 - $12), abs($4 - $16) }' | tsv
+# returns: 
+```
+
+## Building homozygous SNP set
+
+If we select variants that predominantly appear as homozygous in the population, evenly distributed between HOM REF and HOM ALT, then any non-homozugous call will inidicate contamination. We prepare a gnomad file with such SNPs:
+
+We have bcbio gnomad file:
+
+```
+bcftools view -H /data/cephfs/punim0010/local/development/bcbio/genomes/Hsapiens/GRCh37/variation/gnomad_genome.vcf.gz | wc
+260,657,435
+```
+
+And we also can download the most recent one from the website:
+
+```
+http://gnomad.broadinstitute.org/downloads
+# Coding only:
+bcftools view -H gnomad.genomes.r2.0.2.sites.coding_only.chr1-22.vcf.bgz | wc
+4,500,535
+```
+
+First, we select common (20% <= AF <= 80%) single-allelic PASSing SNPs:
+
+```
+GNO=gnomad.genomes.r2.0.2.sites.coding_only.chr1-22.vcf.bgz
+GNO_FILT=gnomad.genomes.r2.0.2.sites.coding_only.chr1-22.SNPS.SINGLE.PASS.COMMON.vcf.bgz
+
+bcftools view -f.,PASS --max-alleles 2 -v snps $GNO -Ob | bcftools filter -i "AN > 1000 && AC/AN <= 0.8 && AC/AN >= 0.2" -Oz -o $GNO_FILT
+# 40481  # wc $GNO_FILT 
+```
+
+Getting 40481 variants.
+
+Now we want to see how many there are SNPs with Hom/Het ratio above 5. Gnomad reports AN (total sample count), AC (mutant sample count), and Hom (homozygouys mutant sample count). We can calculate Het ratio as follows:
+AN = AC + REF_Hom => REF_Hom = AN - AC
+Total_hom = Hom + REF_Hom = Hom + AN - AC
+AC = Het + Hom => Het = AC - Hom
+Total_hom / Het = (Hom + AN - AC) / (AC - Hom)
+
+```
+bcftools filter -i "(Hom + AN - AC) / (AC - Hom) > 5" $GNO_FILT | bcftools query -f "%AN \t %AC \t %Hom \n" | grep -v ',' | awk 'BEGIN {OFS="\t"; print "AN", "AC", "Hom", "AF", "Het", "Total_hom", "Het / Total_hom"} { print $1, $2, $3, $2/$1, $2-$3, $3+$1-$2, ($3+$1-$2) / ($2-$3)}'
+# 125  # wc
+```
+
+And we are getting only 125 variants. Also, all of those variants have only 20% of AF, which is the reason they have a low Het ratio - most of the cases are REF Hom. We want the signal to be stronger, so might require Het/Hom ratio to be calculated only from ALT:
+AC = Het + Hom => Het = AC - Hom
+Hom / Het = Hom / (AC - Hom)
+
+```
+bcftools filter -i "Hom / (AC - Hom) > 5" $GNO_FILT | bcftools query -f "%AN \t %AC \t %Hom \n" | grep -v ',' | awk 'BEGIN {OFS="\t"; print "AN", "AC", "Hom", "AF", "Het", "Het / Hom"} { print $1, $2, $3, $2/$1, $2-$3, $3+$1-$2, $3 / ($2-$3)}'
+# 0  # wc
+```
+
+Getting 0 variants. It might come from the fact that we are using only coding SNPs. Downloading the full gnomad database and rebuilding the variant set:
+
+```
+GNO_FILT=/data/cephfs/punim0010/projects/Saveliev_Fingerprinting/gnomad/gnomad.genomes.r2.0.2.sites.snps_pass_common.vcf.bgz
+cd /data/cephfs/punim0010/projects/Saveliev_Fingerprinting/gnomad
+parallel -j 22 "echo {} && wget https://storage.googleapis.com/gnomad-public/release/2.0.2/vcf/genomes/gnomad.genomes.r2.0.2.sites.chr{}.vcf.bgz ." ::: seq 1 22
+parallel -j 22 "echo {} ; bcftools view -f.,PASS --max-alleles 2 -v snps {} -Ob | bcftools filter -i 'AN > 1000 && AC/AN <= 0.8 && AC/AN >= 0.2' -Oz -o {.}.snps_pass_common.vcf.bgz" ::: *chr*.vcf.bgz
+parallel -j 22 "echo {} ; tabix -p vcf {}" ::: *.snps_pass_common.vcf.bgz
+bcftools merge *.snps_pass_common.vcf.bgz -Oz -o $GNO_FILT
+# 3060191  # wc $GNO_FILT 
+```
+
+Getting 3060191 common variants. Now finding predominantly homozygous variants. In chr21:
+
+```
+bcftools filter -i "Hom / (AC - Hom) > 5" gnomad.genomes.r2.0.2.sites.chr21.vcf.snps_pass_common.vcf.bgz  | bcftools query -f "%AN \t %AC \t %Hom \n" | grep -v ',' | awk 'BEGIN {OFS="\t"; print "AN", "AC", "Hom", "AF", "Het", "Het / Hom"} { print $1, $2, $3, $2/$1, $2-$3, $3+$1-$2, $3 / ($2-$3)}'
+```
+
+In chr21, there are 0.
+
+
+
+
+
+
+## Substituting germline variants
+
+Now we experiment with calling germline variants in shallow BAM files.
+
+Test:
+
+```
+grep 125479363 $SNPS | awk '{print $1":"($2+1)"-"$3}' | gargs -p 31 "samtools mpileup -uf $REF -r {} PTC_NA24385_S11-ready.bam -a -t DP,AD | bcftools call -c | bcftools view -H"
+```
+
+```
+REF=/data/cephfs/punim0010/local/stable/bcbio/genomes/Hsapiens/GRCh37/seq/GRCh37.fa
+SNPS=/data/cephfs/punim0010/projects/Saveliev_Fingerprinting/new_SNPs/SNP_GRCh37.sorted.maf10.bed
+
+SAMPLE=NA24631_S9__3x__PTC_NA24385_S11__034x
+BAM=$SAMPLE-ready.bam
+cd /data/cephfs/punim0010/projects/Saveliev_Fingerprinting/bcbio/bcbio/final/$SAMPLE
+#cat $SNPS | awk '{print $1":"($2+1)"-"$3}' | gargs --ordered -p 31 "samtools mpileup -uf $REF -r {} $BAM -a -t DP,AD | bcftools call -c | bcftools view -Oz -o mpileup_work/$SAMPLE-ready-{}.vcf && tabix mpileup_work/$SAMPLE-ready-{}.vcf.gz"
+#bcftools merge mpileup_work/$SAMPLE-ready-*.vcf.gz -o $SAMPLE-ready.vcf
+samtools mpileup -uf $REF -l $SNPS $BAM -a -t DP,AD | bcftools call -c | bcftools view -Oz -o $SAMPLE-ready.vcf.gz && tabix $SAMPLE-ready.vcf.gz
+
+SAMPLE=NA24631_S9
+BAM=$SAMPLE-ready.bam
+cd /data/cephfs/punim0010/projects/Saveliev_Fingerprinting/bcbio/bcbio/final/$SAMPLE
+samtools mpileup -uf $REF -l $SNPS $BAM -a -t DP,AD | bcftools call -c | bcftools view -Oz -o $SAMPLE-ready.vcf.gz && tabix $SAMPLE-ready.vcf.gz
+
+SAMPLE=PTC_NA24385_S11
+BAM=$SAMPLE-ready.bam
+cd /data/cephfs/punim0010/projects/Saveliev_Fingerprinting/bcbio/bcbio/final/$SAMPLE
+samtools mpileup -uf $REF -l $SNPS $BAM -a -t DP,AD | bcftools call -c | bcftools view -Oz -o $SAMPLE-ready.vcf.gz && tabix $SAMPLE-ready.vcf.gz
+
+cd /data/cephfs/punim0010/projects/Saveliev_Fingerprinting/ncm_from_bams/mpileups
+SAMPLE=NA24631-1KC
+BAM=/data/cephfs/punim0010/projects/Hsu_WGS_Validation/WGS-GiaB-merged/final/NA24631-1KC/NA24631-1KC-ready.bam
+~/bin/sambamba slice $BAM -L $SNPS > $SAMPLE-ready.SNPS.bam
+BAM=$SAMPLE-ready.SNPS.bam
+samtools mpileup -uf $REF -l $SNPS $BAM -a -t DP,AD | bcftools call -c | bcftools view -Oz -o $SAMPLE-ready.vcf.gz && tabix $SAMPLE-ready.vcf.gz
+#cat $SNPS | awk '{print $1":"($2+1)"-"$3}' | gargs --ordered -p 31 "samtools mpileup -uf $REF -r {} $BAM -a -t DP,AD | bcftools call -c | bcftools view -Oz -o mpileup_work/$SAMPLE-ready-{}.vcf && tabix mpileup_work/$SAMPLE-ready-{}.vcf.gz"
+```
+
 
 
 
@@ -251,9 +601,9 @@ Estimated coverage:    1.864
 Calculating the distance with `mash dist`:
 
 ```
-fastqs/NA24631_S9			fastqs/NA24631-PosCntl	 0.00932572      0       698/1000
-fastqs/NA24631_S9			fastqs/PTC_NA24385	     0.0161637       0       553/1000
-fastqs/NA24631-PosCntl_S6	fastqs/PTC_NA24385	     0.014871        0       577/1000
+fastqs/NA24631_S9			fastqs/NA24631-PosCntl   0.00932572      0       698/1000
+fastqs/NA24631_S9			fastqs/PTC_NA24385       0.0161637       0       553/1000
+fastqs/NA24631-PosCntl_S6	fastqs/PTC_NA24385       0.014871        0       577/1000
 ```
 
 The related samples have the distance almost 700, while unrelated are below 600. However the signal doesn't look strong.
@@ -282,34 +632,31 @@ Estimated coverage:    2.974
 The difference is more clear - unrelated samples are below 500.
 
 ```
-NA24631 m2       	 NA24631-PosCntl m2     0.0112643       0       652/1000
-NA24631 m2     	     PTC_NA24385_S1 m2 	    0.0310744       0       352/1000
-NA24631-PosCntl m2   PTC_NA24385_S1 m2 		0.0320933       0       342/1000
+NA24631 m2           NA24631-PosCntl m2     0.0112643       0       652/1000
+NA24631 m2           PTC_NA24385_S1 m2      0.0310744       0       352/1000
+NA24631-PosCntl m2   PTC_NA24385_S1 m2      0.0320933       0       342/1000
 ```
 
 Trying to see how it looks when comparing m2 vs m1:
 
 ```
-NA24631       		NA24631-PosCntl m2  0.0112643       0       652/1000  match
-NA24631 m2     		NA24631-PosCntl     0.0105688       0       668/1000  match
-NA24631       		PTC_NA24385_S1 m2   0.0370638       0       298/1000  unmatch
-NA24631 m2			PTC_NA24385_S1		0.0150813       0       573/1000  unmatch
-NA24631-PosCntl	    PTC_NA24385_S1 m2   0.0353885       0       312/1000  unmatch
-NA24631-PosCntl m2  PTC_NA24385_S1		0.0154006       0       567/1000  unmatch
+NA24631             NA24631-PosCntl m2  0.0112643       0       652/1000  match
+NA24631 m2          NA24631-PosCntl     0.0105688       0       668/1000  match
+NA24631             PTC_NA24385_S1 m2   0.0370638       0       298/1000  unmatch
+NA24631 m2          PTC_NA24385_S1      0.0150813       0       573/1000  unmatch
+NA24631-PosCntl     PTC_NA24385_S1 m2   0.0353885       0       312/1000  unmatch
+NA24631-PosCntl m2  PTC_NA24385_S1      0.0154006       0       567/1000  unmatch
 ```
 
 We are seing the low concordance for mismatched samples only where PTC_NA24385 is run with m2. But this sample is low coverage in the first place - twice as lower as the other 2. So the low number might just come from that. Trying to add a higher-coverage PTC_NA24385.
 
 ```
-time mash sketch fastqs/PTC_NA24385_S11_R1_001.fastq.gz -r -p 4 -m 2 -o mash/PTC_NA24385_S11_R1_001.m2.fastq.gz & 
-time mash sketch fastqs/PTC_NA24385_S11_R1_001.fastq.gz -r -p 4 -o mash/PTC_NA24385_S11_R1_001.fastq.gz & 
-
-PTC_NA24385_S11		NA24631			       0.0123533       0       628/1000
-PTC_NA24385_S11		NA24631-PosCntl	       0.0113529       0       650/1000
-PTC_NA24385_S11		PTC_NA24385_S1	       0.017359        0       532/1000
-PTC_NA24385_S11	m2	NA24631 m2 			   0.0122604       0       630/1000
-PTC_NA24385_S11	m2	NA24631-PosCntl m2	   0.0123533       0       628/1000
-PTC_NA24385_S11	m2	PTC_NA24385_S1 m2 	   0.0325113       0       338/1000
+PTC_NA24385_S11     NA24631                0.0123533       0       628/1000
+PTC_NA24385_S11     NA24631-PosCntl        0.0113529       0       650/1000
+PTC_NA24385_S11     PTC_NA24385_S1         0.017359        0       532/1000
+PTC_NA24385_S11 m2  NA24631 m2             0.0122604       0       630/1000
+PTC_NA24385_S11 m2  NA24631-PosCntl m2     0.0123533       0       628/1000
+PTC_NA24385_S11 m2  PTC_NA24385_S1 m2      0.0325113       0       338/1000 
 ```
 
 The high similarity between unrelated samples confirms that previously the low number came from a low PTC_NA24385 input.
@@ -394,7 +741,89 @@ fastqs/NA24631-PosCntl_S6_R1_001.fastq.gz   fastqs/PTC_NA24385_S1_R1_001.fastq.g
 
 -c 4 gives a runtime very close to the original run without -c, which is expected given that the estimated coverage is 4x, which is ~8x for a diploid sample. So there is no reason to experiment with that too. 
 
-Overall, it's possible to distinguish matching samples with Mash, however it requires full 7x coverage samples to clearly do that, and won't work with a more shallow data, so we can't it expect to work with contaminated data. Also, the runtime is slower, so NGSCheckMate looks like a better option. Sticking with NGSCheckMate for the task, but keeping mash in mind as an interesting way to estimate coverage without alignment.
+Overall, it's possible to distinguish matching samples with Mash, however it requires full 7x coverage samples to clearly do that, and won't work with a more shallow data. Also, the runtime is slower than NGSCheckMate. However, we want to see how it works with contaminati option. Sticking with NGSCheckMate for the task, but keeping mash in mind as an interesting way to estimate coverage without alignment.
+
+
+### On contaminated data
+
+```
+time mash sketch fastqs/NA24631_S9__3x__PTC_NA24385_S11__034x.fastq.gz -r -g 3234830K -c 2 -o mash/NA24631_S9__3x__PTC_NA24385_S11__034x.fastq.gz.mash
+# Estimated genome size: 1.94761e+09
+# Estimated coverage:    2
+# Reads used:            35556095
+# 351.71s user 0.69s system 99% cpu 5:52.41 total
+
+time mash sketch fastqs/NA24631_S9__6x__PTC_NA24385_S11__07x.fastq.gz -r -g 3234830K -c 2 -o mash/NA24631_S9__6x__PTC_NA24385_S11__07x.fastq.gz.mash
+# Estimated genome size: 1.94761e+09
+# Estimated coverage:    2
+# Reads used:            35556095
+# Writing to mash/NA24631_S9__6x__PTC_NA24385_S11__07x.fastq.gz.mash.msh...
+# 354.19s user 0.51s system 99% cpu 5:54.70 total
+```
+
+Calculating the distance with `mash dist`:
+
+```
+# clean:
+fastqs/NA24631_S9			fastqs/NA24631-PosCntl   0.00932572      0       698/1000
+fastqs/NA24631_S9			fastqs/PTC_NA24385       0.0161637       0       553/1000
+fastqs/NA24631-PosCntl   	fastqs/PTC_NA24385       0.014871        0       577/1000
+
+# vs. 3x+0.34x contaminated
+fastqs/NA24631-PosCntl_S6_R1_001.fastq.gz (1x)       fastqs/NA24631_S9__3x__PTC_NA24385_S11__034x.fastq.gz   0.0202137       0       486/1000
+fastqs/NA24631_S9_R1_001.fastq.gz                    fastqs/NA24631_S9__3x__PTC_NA24385_S11__034x.fastq.gz   0               0       1000/1000
+fastqs/PTC_NA24385_S1_R1_001.fastq.gz                fastqs/NA24631_S9__3x__PTC_NA24385_S11__034x.fastq.gz   0.0183132       0       516/1000
+
+# vs. 6x+0.7x contaminated
+
+# contaminated vs contaminated
+fastqs/NA24631_S9__3x__PTC_NA24385_S11__034x.fastq.gz   fastqs/NA24631_S9__6x__PTC_NA24385_S11__07x.fastq.gz    0       0       1000/1000
+
+NA24631_S9__3x__PTC_NA24385_S11__034x  NA24631_S9
+NA24631_S9__3x__PTC_NA24385_S11__034x  NA24631-PosCntl
+NA24631_S9__3x__PTC_NA24385_S11__034x  PTC_NA24385_S1 (1x)
+NA24631_S9__3x__PTC_NA24385_S11__034x  PTC_NA24385_S11 (3x)
+NA24631_S9__3x__PTC_NA24385_S11__034x  NA24631-1KC (full)
+```
+
+Increasing k-mer size to 28:
+
+```
+time mash sketch fastqs/NA24631_S9__3x__PTC_NA24385_S11__034x.fastq.gz -r -p 10 -c 2 -k 28 -o mash/NA24631_S9__3x__PTC_NA24385_S11__034x_c2k28 &
+time mash sketch fastqs/NA24631_S9__6x__PTC_NA24385_S11__07x.fastq.gz  -r -p 10 -c 2 -k 28 -o mash/NA24631_S9__6x__PTC_NA24385_S11__07x_c2k28 &
+time mash sketch fastqs/NA24631_S9_R1_001.fastq.gz                     -r -p 10 -c 2 -k 28 -o mash/NA24631_S9_R1_c2k28 &  
+time mash sketch fastqs/PTC_NA24385_S11_R1_001.fastq.gz                -r -p 10 -c 2 -k 28 -o mash/PTC_NA24385_S11__c2k28 &
+
+time mash sketch fastqs/NA24631-1KC_R1.fastq.gz                        -r -p 10 -c 2 -k 28 -o mash/NA24631-1KC_R1__c2k28 &
+time mash sketch fastqs/NA24631-PosCntl_S6_R1_001.fastq.gz             -r -p 10 -c 2 -k 28 -o mash/NA24631-PosCntl_S6_R1__c2k28 &
+```
+
+That also doesn't help:
+
+```
+fastqs/NA24631-1KC_R1.fastq.gz  fastqs/NA24631-PosCntl_S6_R1_001.fastq.gz                                                       0.021441   0  378/1000
+fastqs/NA24631-1KC_R1.fastq.gz  fastqs/NA24631_S9__3x__PTC_NA24385_S11__034x.fastq.gz                                           0.0188705  0  418/1000
+fastqs/NA24631-1KC_R1.fastq.gz  fastqs/NA24631_S9__6x__PTC_NA24385_S11__07x.fastq.gz                                            0.0188705  0  418/1000
+fastqs/NA24631-1KC_R1.fastq.gz  fastqs/NA24631_S9_R1_001.fastq.gz                                                               0.0188705  0  418/1000
+fastqs/NA24631-1KC_R1.fastq.gz  /data/cephfs/punim0010/projects/Saveliev_Fingerprinting/fastqs/PTC_NA24385_S11_R1_001.fastq.gz  0.020243   0  396/1000
+```
+
+Contaminated samples have same identity as clean samples. That's quite expected as they have same most abundant k-mers. So for contamination check, we can only rely on SNPs frequencies.
+
+
+
+
+### Other tools
+
+https://genome.sph.umich.edu/wiki/ContaminationDetection
+
+
+
+```
+```
+
+
+
 
 
 
