@@ -320,6 +320,15 @@ cat SNP_hg19.sorted.maf10.bed | py -x "x[3:]" > SNP_GRCh37.sorted.maf10.bed
 perl ../NGSCheckMate/patterngenerator/makesnvpattern.pl SNP_GRCh37.sorted.maf10.bed /data/cephfs/punim0010/extras/vlad/bcbio/genomes/Hsapiens/GRCh37/seq/GRCh37.fa /data/cephfs/punim0010/extras/vlad/bcbio/genomes/Hsapiens/GRCh37/bowtie/GRCh37.fa . new_SNPs
 ```
 
+### Rebuilding with gnomad
+
+```
+
+cd /data/cephfs/punim0010/projects/Saveliev_Fingerprinting/gnomad_SNPs
+bcftools query gnomad.genomes.r2.0.2.sites.coding_only.chr1-22.SNPS.SINGLE.PASS.COMMON.vcf.bgz -f "%CHROM\t%POS\t%POS\t%ID\n" | awk '{print $1 "\t" $2-1 "\t" $3 "\t" $4}' > gnomad.genomes.r2.0.2.sites.coding_only.chr1-22.SNPS.SINGLE.PASS.COMMON.bed
+../NGSCheckMate/patterngenerator/makesnvpattern.pl gnomad.genomes.r2.0.2.sites.coding_only.chr1-22.SNPS.SINGLE.PASS.COMMON.bed /data/cephfs/punim0010/local/stable/bcbio/genomes/Hsapiens/GRCh37/seq/GRCh37.fa /data/cephfs/punim0010/extras/vlad/bcbio/genomes/Hsapiens/GRCh37/bowtie/GRCh37.fa . gnomad_SNP
+```
+
 
 ### Aligning shallow BAMs
 
@@ -452,9 +461,9 @@ paste NA24631-1KC.mpileup_all.ncm NA24631_S9.ncm NA24631_S9__3x__PTC_NA24385_S11
 
 ## Building homozygous SNP set
 
-If we select variants that predominantly appear as homozygous in the population, evenly distributed between HOM REF and HOM ALT, then any non-homozugous call will inidicate contamination. We prepare a gnomad file with such SNPs:
+If we select variants that predominantly appear as homozygous in the population, evenly distributed between HOM REF and HOM ALT, then any non-homozygous call will indicate contamination. We prepare a `gnomad` file with such SNPs:
 
-We have bcbio gnomad file:
+We have the bcbio `gnomad` file:
 
 ```
 bcftools view -H /data/cephfs/punim0010/local/development/bcbio/genomes/Hsapiens/GRCh37/variation/gnomad_genome.vcf.gz | wc
@@ -521,9 +530,6 @@ bcftools filter -i "Hom / (AC - Hom) > 5" gnomad.genomes.r2.0.2.sites.chr21.vcf.
 ```
 
 In chr21, there are 0.
-
-
-
 
 
 
