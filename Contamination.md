@@ -664,8 +664,9 @@ cut -f4 NA24631_S9__3x__PTC_NA24385_S11__034x__100.ncm | awk '{ sum += $1 } END 
 cut -f4 NA24631_S9.ncm | awk '{ sum += $1 } END { print sum/NR }'
 ```
 
-For first 100 mutations, the result is 0.961553 for full, 0.955937 for contaminated.
+For first 100 snps, the result is 0.961553, 0.955937 for contaminated.
 
+For 100k snps, 0.993578 for clean one, 0.956101 for contaminated. Actually same numbers we get for 1k snps, and it's stable on any number of snps (checked up until 1m).
 
 
 ## k-mer based approaches
@@ -926,8 +927,22 @@ Github: https://github.com/nygenome/conpair
 
 Dependencies: "GATK 2.3 or higher.". Breaks with GATK 4. Here we go again...
 
+```
+cd /data/cephfs/punim0010/projects/Saveliev_Fingerprinting/conpair
+source load.sh
 
+./conpair/scripts/run_gatk_pileup_for_sample.py -B /data/cephfs/punim0010/projects/Saveliev_Fingerprinting/bams/NA24631_S9__3x__PTC_NA24385_S11__034x-sort.bam -O NA24631_S9__3x__PTC_NA24385_S11__034x.pileup
 
+./conpair/scripts/run_gatk_pileup_for_sample.py -B /data/cephfs/punim0010/projects/Saveliev_Fingerprinting/bams/NA24631-1KC-ready.bam -O NA24631-1KC.pileup
+
+python ./conpair/scripts/verify_concordance.py -T NA24631-1KC.pileup -N NA24631_S9__3x__PTC_NA24385_S11__034x.pileup
+0.844
+Based on 1732/7387 markers (coverage per marker threshold: 10 reads)
+Minimum mappinq quality: 10
+Minimum base quality: 20
+```
+
+Gives 0.844. Seems legit.
 
 
 
