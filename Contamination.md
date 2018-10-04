@@ -1,10 +1,35 @@
 Contamination control from shallow FASTQ
 ========================================
 
-Out idea is to understand if we can perform a contamination pre-flight check from shallow data at 3x-7x coverage. We will have shallow GiaB samples data with an unknown contamination, and we can compare it to a full GiaB data known in advance. There are 2 basic approaches we want to explore: 
+Our idea is to understand if we can perform a contamination pre-flight check from shallow data at 3x-7x coverage. We will have shallow GiaB samples data with an unknown contamination, and we can compare it to a full GiaB data known in advance. There are 2 basic approaches we want to explore: 
 
 1. Call variants and compare AFs against a truth. Contaminated data should result in a consistently lower AF of each score, e.g. for 10% contamination, AFs should be on avarage 10% lower.
 2. Count k-mers in FASTQ, the k-mer identity should be 10% less than expected for a clean sample.
+
+- [Contamination control from shallow FASTQ](#contamination-control-from-shallow-fastq)
+  - [NGSCheckMate](#ngscheckmate)
+    - [FASTQ approach on clean samples](#fastq-approach-on-clean-samples)
+    - [With contaminated samples](#with-contaminated-samples)
+    - [Exploring VAF files](#exploring-vaf-files)
+    - [Generate VAF from full BAMs](#generate-vaf-from-full-bams)
+    - [Rebuilding SNPs from scratch](#rebuilding-snps-from-scratch)
+    - [Rebuilding with gnomad](#rebuilding-with-gnomad)
+    - [Aligning shallow BAMs](#aligning-shallow-bams)
+    - [Working with new SNP list](#working-with-new-snp-list)
+      - [Find VAFs from contaminated and clean FASTQ](#find-vafs-from-contaminated-and-clean-fastq)
+      - [Extract VAFs from shallow BAMs](#extract-vafs-from-shallow-bams)
+      - [Extract VAFs from full BAMs](#extract-vafs-from-full-bams)
+      - [Compare differences based on those VAFs](#compare-differences-based-on-those-vafs)
+  - [Building gnomad homozygous SNP set](#building-gnomad-homozygous-snp-set)
+  - [Substituting germline variants](#substituting-germline-variants)
+  - [GiaB homozygous SNPs](#giab-homozygous-snps)
+  - [k-mer based approaches](#k-mer-based-approaches)
+    - [-m 2 to discard single-copy](#m-2-to-discard-single-copy)
+    - [-g 3234830K](#g-3234830k)
+    - [Target the coverage with -c](#target-the-coverage-with--c)
+    - [On contaminated data](#on-contaminated-data)
+  - [ContaminationDetection tool](#contaminationdetection-tool)
+  - [Conpair](#conpair)
 
 ## NGSCheckMate
 
@@ -429,7 +454,7 @@ python make_vaf.py PTC_NA24385_S11-mpileup_all_sorted > PTC_NA24385_S11.ncm
 
 ```
 cd /data/cephfs/punim0010/projects/Saveliev_Fingerprinting/ncm_from_bams/mpileups
-cat #SNPS | awk '{print $1":"($2+1)"-"$3}' | gargs -p 31 "samtools mpileup -uf $REF -r {} /data/cephfs/punim0010/projects/Hsu_WGS_Validation/WGS-GiaB-merged/final/NA24631-1KC/NA24631-1KC-ready.bam -a -t DP,AD | bcftools view -H -o NA24631-1KC-ready.mpileup/NA24631-1KC.mpileup_{}"
+cat $SNPS | awk '{print $1":"($2+1)"-"$3}' | gargs -p 31 "samtools mpileup -uf $REF -r {} /data/cephfs/punim0010/projects/Hsu_WGS_Validation/WGS-GiaB-merged/final/NA24631-1KC/NA24631-1KC-ready.bam -a -t DP,AD | bcftools view -H -o NA24631-1KC-ready.mpileup/NA24631-1KC.mpileup_{}"
 ls -1 NA24631-1KC-ready.mpileup/NA24631-1KC.mpileup_* | parallel -k "if [ -s {} ] ; then cat {} ; else echo "NA {}" ; fi" > NA24631-1KC-ready.mpileup/NA24631-1KC.mpileup_all
 sort --general-numeric-sort -k1,1 -k2,2 NA24631-1KC-ready.mpileup/NA24631-1KC.mpileup_all | uniq > NA24631-1KC.mpileup_all_sorted
 cd ..
@@ -459,7 +484,7 @@ paste NA24631-1KC.mpileup_all.ncm NA24631_S9.ncm NA24631_S9__3x__PTC_NA24385_S11
 # returns: 
 ```
 
-## Building homozygous SNP set
+## Building gnomad homozygous SNP set
 
 If we select variants that predominantly appear as homozygous in the population, evenly distributed between HOM REF and HOM ALT, then any non-homozygous call will indicate contamination. We prepare a `gnomad` file with such SNPs:
 
@@ -507,7 +532,8 @@ AC = Het + Hom => Het = AC - Hom
 Hom / Het = Hom / (AC - Hom)
 
 ```
-bcftools filter -i "Hom / (AC - Hom) > 5" $GNO_FILT | bcftools query -f "%AN \t %AC \t %Hom \n" | grep -v ',' | awk 'BEGIN {OFS="\t"; print "AN", "AC", "Hom", "AF", "Het", "Het / Hom"} { print $1, $2, $3, $2/$1, $2-$3, $3+$1-$2, $3 / ($2-$3)}'
+bcftools filter -i "Hom / (AC - Hom) > 5" $GNO_FILT | bcftools query -f "%AN \t %AC \t %Hom \n" | grep -v ',' | awk 'BEGIN {OFS="\t"; print "Total", "Mut", "MutHom", "MutFreq", "MutHet=Mut-HomHom", "MutHet / MutHom", "TotalHom=Total-Mut+MutHom", "HomFreq=TotalHom/Total", "HetFreq"} { if ($2/$1 > 0.3 && $2/$1 < 0.7) { print $1, $2, $3, $2/$1, $2-$3, $3 / ($2-$3), $1-$2+$3, ($1-$2+$3)/$1, ($2-$3) /
+$2 } }' | tsv
 # 0  # wc
 ```
 
@@ -526,7 +552,7 @@ bcftools merge *.snps_pass_common.vcf.bgz -Oz -o $GNO_FILT
 Getting 3060191 common variants. Now finding predominantly homozygous variants. In chr21:
 
 ```
-bcftools filter -i "Hom / (AC - Hom) > 5" gnomad.genomes.r2.0.2.sites.chr21.vcf.snps_pass_common.vcf.bgz  | bcftools query -f "%AN \t %AC \t %Hom \n" | grep -v ',' | awk 'BEGIN {OFS="\t"; print "AN", "AC", "Hom", "AF", "Het", "Het / Hom"} { print $1, $2, $3, $2/$1, $2-$3, $3+$1-$2, $3 / ($2-$3)}'
+bcftools filter -i "Hom / (AC - Hom) > 5" gnomad.genomes.r2.0.2.sites.chr21.vcf.snps_pass_common.vcf.bgz | bcftools query -f "%AN \t %AC \t %Hom \n" | grep -v ',' | awk 'BEGIN {OFS="\t"; print "AN", "AC", "Hom", "AF", "Het", "Het / Hom"} { print $1, $2, $3, $2/$1, $2-$3, $3+$1-$2, $3 / ($2-$3)}'
 ```
 
 In chr21, there are 0.
@@ -574,6 +600,71 @@ samtools mpileup -uf $REF -l $SNPS $BAM -a -t DP,AD | bcftools call -c | bcftool
 ```
 
 
+## GiaB homozygous SNPs
+
+We don't need gnomad SNPs if we always know the samples being studied for contamination. We can instead use the full BAM and extract clean homozugous SNPs, and check if they keep being clean homozygous in contaminated shallow data.
+
+Extracting hom from NA24631 germline vcf:
+
+```
+cd /data/cephfs/punim0010/projects/Saveliev_Fingerprinting/hom
+bcftools view -f.,PASS -g hom -v snps /data/cephfs/punim0010/data/Results_Local/Accreditation/GiaB/2017-11-13/WGS-GiaB-merged/final/2017-11-13_giab-merged/HanChinese-2-ensemble-annotated.vcf.gz -Oz -o NA24631-2KC.hom.snps.vcf.gz
+bcftools filter -i "FORMAT/DP>=30 && FORMAT/AF==1" NA24631-1KC.hom.snps.vcf.gz -Oz -o NA24631-1KC.hom.snps.dp30af1.vcf.gz
+# 1028312 variants
+gunzip -c NA24631-1KC.hom.snps.dp30af1.vcf.gz | bioawk -tc vcf '{ print $chrom, $pos-1, $pos }' > NA24631-1KC.hom.snps.dp30af1.bed
+```
+
+Now call pileups:
+
+```
+mkdir mpileup_work
+REF=/data/cephfs/punim0010/local/stable/bcbio/genomes/Hsapiens/GRCh37/seq/GRCh37.fa
+SNPS=NA24631-1KC.hom.snps.dp30af1.bed
+cat $SNPS | awk '{print $1":"($2+1)"-"$3}' | gargs -p 31 "samtools mpileup -uf $REF -r {} ../bams/NA24631_S9__3x__PTC_NA24385_S11__034x-sort.bam -a -t DP,AD | bcftools view -H -o mpileup_work/NA24631_S9__3x__PTC_NA24385_S11__034x.mpileup_{}"
+
+for f in mpileup_work/NA24631_S9__3x__PTC_NA24385_S11__034x.mpileup_* ; do if [ -s $f ] ; then cat $f ; else echo "NA $f" ; fi ; done > NA24631_S9__3x__PTC_NA24385_S11__034x-mpileup_all
+
+sort --general-numeric-sort -k1,1 -k2,2 NA24631_S9__3x__PTC_NA24385_S11__034x-mpileup_all | uniq > NA24631_S9__3x__PTC_NA24385_S11__034x-mpileup_all_sorted
+
+# In result, getting lines as follows - NA for uncalled and proper VCF records for called:
+# 1       168013850       .       T       <*>     0       .       DP=2;I16=2,0,0,0,74,2738,0,0,120,7200,0,0,35,725,0,0;QS=1,0;MQ0F=0      PL:DP:ADF:AD    0,6,67:2:2,0:2,0
+# NA NA24631_S9__3x__PTC_NA24385_S11__034x-sort.mpileup_10:100018844-100018844
+```
+
+Now for all records, generate ncm file like:
+
+```
+index   ref     alt     vaf
+0       0       0       NA
+1       NA      NA      NA
+2       0       2       1.000000
+```
+
+Add index, and if it's NA - add NA, otherwise add `AD[1] / sum(AD)`
+
+```
+python make_vaf.py NA24631_S9__3x__PTC_NA24385_S11__034x-mpileup_all_sorted > NA24631_S9__3x__PTC_NA24385_S11__034x.ncm
+```
+
+Same for non-contaminated file:
+
+```
+REF=/data/cephfs/punim0010/local/stable/bcbio/genomes/Hsapiens/GRCh37/seq/GRCh37.fa
+SNPS=NA24631-1KC.hom.snps.dp30af1.bed
+cat $SNPS | awk '{print $1":"($2+1)"-"$3}' | gargs -p 31 "samtools mpileup -uf $REF -r {} ../bams/NA24631_S9-sort.bam -a -t DP,AD | bcftools view -H -o mpileup_work/NA24631_S9.mpileup_{}"
+for f in mpileup_work/NA24631_S9.mpileup_* ; do if [ -s $f ] ; then cat $f; else echo "NA $f" ; fi ; done > NA24631_S9-mpileup_all
+sort --general-numeric-sort -k1,1 -k2,2 NA24631_S9-mpileup_all | uniq > NA24631_S9-mpileup_all_sorted
+python make_vaf.py NA24631_S9-mpileup_all_sorted > NA24631_S9.ncm
+```
+
+We expect those varaints to be close to AF=1 on average in full sample, and below AF in contaminated sample:
+
+```
+cut -f4 NA24631_S9__3x__PTC_NA24385_S11__034x__100.ncm | awk '{ sum += $1 } END { print sum/NR }'
+cut -f4 NA24631_S9.ncm | awk '{ sum += $1 } END { print sum/NR }'
+```
+
+For first 100 mutations, the result is 0.961553 for full, 0.955937 for contaminated.
 
 
 
@@ -819,16 +910,21 @@ Contaminated samples have same identity as clean samples. That's quite expected 
 
 
 
-### Other tools
+## ContaminationDetection tool
 
 https://genome.sph.umich.edu/wiki/ContaminationDetection
 
 
 
-```
-```
+## Conpair
 
+Reported to perform better than VerifyBAMID and Contest.
 
+Paper: https://www.ncbi.nlm.nih.gov/pmc/articles/PMC5048070/pdf/btw389.pdf
+
+Github: https://github.com/nygenome/conpair
+
+Dependencies: "GATK 2.3 or higher.". Breaks with GATK 4. Here we go again...
 
 
 
