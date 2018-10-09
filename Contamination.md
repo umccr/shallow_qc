@@ -30,6 +30,9 @@ Our idea is to understand if we can perform a contamination pre-flight check fro
     - [On contaminated data](#on-contaminated-data)
   - [ContaminationDetection tool](#contaminationdetection-tool)
   - [Conpair](#conpair)
+    - [estimate_tumor_normal_contamination.py](#estimatetumornormalcontaminationpy)
+    - [verify_concordance.py](#verifyconcordancepy)
+    - [COLO829](#colo829)
 
 ## NGSCheckMate
 
@@ -934,17 +937,92 @@ source load.sh
 ./conpair/scripts/run_gatk_pileup_for_sample.py -B /data/cephfs/punim0010/projects/Saveliev_Fingerprinting/bams/NA24631_S9__3x__PTC_NA24385_S11__034x-sort.bam -O NA24631_S9__3x__PTC_NA24385_S11__034x.pileup
 
 ./conpair/scripts/run_gatk_pileup_for_sample.py -B /data/cephfs/punim0010/projects/Saveliev_Fingerprinting/bams/NA24631-1KC-ready.bam -O NA24631-1KC.pileup
+```
 
-python ./conpair/scripts/verify_concordance.py -T NA24631-1KC.pileup -N NA24631_S9__3x__PTC_NA24385_S11__034x.pileup
+Conpair has 2 commands, `estimate_tumor_normal_contamination.py` and `verify_concordance.py`.
+
+
+### estimate_tumor_normal_contamination.py
+
+```
+python ./conpair/scripts/estimate_tumor_normal_contamination.py -T NA24631_S9__3x__PTC_NA24385_S11__034x.pileup -N NA24631-1KC.pileup
+Normal sample contamination level: 0.103%
+Tumor sample contamination level: 10.152%
+
+python ./conpair/scripts/estimate_tumor_normal_contamination.py -T NA24631_S9-shallow.pileup -N NA24631-1KC.pileup
+Normal sample contamination level: 0.103%
+Tumor sample contamination level: 0.303%
+
+python ./conpair/scripts/estimate_tumor_normal_contamination.py -T NA24631_S9__3x__PTC_NA24385_S11__034x.pileup -N NA24631_S9-shallow.pileup
+Normal sample contamination level: 0.261%
+Tumor sample contamination level: 6.981%
+```
+
+The first command shows how accurately we can estimate contamination from just 3x.
+
+
+### verify_concordance.py
+
+To eliminate the effect of copy number variation on the concordance levels, we recommend using the -H flag. If two samples are concordant the expected concordance level should be close to 99-100%.
+For discordant samples concordance level should be close to 40%.
+You can observe slighly lower concordance (80-99%) in presence of contamination and/or copy number changes (if the -H option wasn't used) in at least one of the samples.
+
+```
+python ./conpair/scripts/verify_concordance.py -T NA24631_S9-shallow.pileup -N NA24631-1KC.pileup
+0.992
+Based on 1764/7387 markers (coverage per marker threshold: 10 reads)
+Minimum mappinq quality: 10
+Minimum base quality: 20
+
+python ./conpair/scripts/verify_concordance.py -T NA24631_S9__3x__PTC_NA24385_S11__034x.pileup -N NA24631-1KC.pileup
 0.844
 Based on 1732/7387 markers (coverage per marker threshold: 10 reads)
 Minimum mappinq quality: 10
 Minimum base quality: 20
+
+python ./conpair/scripts/verify_concordance.py -T NA24631_S9__3x__PTC_NA24385_S11__034x.pileup -N NA24631_S9-shallow.pileup
+0.891
+Based on 1417/7387 markers (coverage per marker threshold: 10 reads)
+Minimum mappinq quality: 10
+Minimum base quality: 20
 ```
 
-Gives 0.844. Seems legit.
+Makes sense too, though not sure why it reported less exact number (0.844) for shallow-vs-full than (0.891) for shallow-vs-shallow.
 
 
+### COLO829
 
+```
+python ./Conpair/scripts/estimate_tumor_normal_contamination.py -T pileups/Colo829_100pc.pileup -N pileups/Colo829_B.pileup
+Normal sample contamination level: 0.07%
+Tumor sample contamination level: 0.072%
+
+python ./Conpair/scripts/estimate_tumor_normal_contamination.py -T pileups/Colo829_20pc.pileup -N pileups/Colo829_B.pileup
+Normal sample contamination level: 0.07%
+Tumor sample contamination level: 0.029%
+
+python ./Conpair/scripts/estimate_tumor_normal_contamination.py -T pileups/Colo829_20pc.pileup -N pileups/Colo829_100pc.pileup
+Normal sample contamination level: 0.105%
+Tumor sample contamination level: 82.034%
+
+verify_concordance.py:
+Colo829_20pc vs Colo829_100pc: 0.864
+Colo829_40pc vs Colo829_100pc: 0.865
+Colo829_60pc vs Colo829_100pc: 0.864
+Colo829_80pc vs Colo829_100pc: 0.896
+Colo829_100pc vs Colo829_B:    0.864
+```
+
+Concordance is stable, which probably means that all of those are from the same patient.
+
+T/N contamination makes sence for 100pc vs B and for 20pc vs 100pc, but not for 20pc vs B.
+
+```
+python ./Conpair/scripts/verify_concordance.py -T pileups/Colo829_100pc.pileup -N pileups/Colo829_B.pileup -H
+0.999
+Based on 4058/7387 markers (coverage per marker threshold: 10 reads)
+Minimum mappinq quality: 10
+Minimum base quality: 20
+```
 
 
